@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "restore-missing-youtube-watch-history"
+version = "0.1.0"
+description = "Script to import missing YouTube watch history"
+authors = ["Alexandre Teles <alexandre.teles@ufba.br>"]
+license = "GPLv3"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+yt-dlp = "^2023.12.30"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

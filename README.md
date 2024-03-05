@@ -68,6 +68,9 @@
 > If you need help, you can visit our links at [revanced.app](https://revanced.app) or join our [Discord](https://revanced.app/discord).
 > # Do **NOT** use the ![image](https://github.com/ReVanced/restore-missing-youtube-watch-history/assets/13122796/c3717a3f-6751-4f87-8318-3c5f0f3e4075) channel. Instead use the ![image](https://github.com/ReVanced/restore-missing-youtube-watch-history/assets/13122796/d3ad95cb-8575-4a28-912b-8bfa64939e58) channel
 
+> [!WARNING]
+> This script automates your YouTube account, which is not in terms of YouTube's service. Use this script with caution.
+
 ## Usage
 
 1. Install the latest Python from [Microsoft Store](https://apps.microsoft.com/detail/9pjpw5ldxlz5?hl=en-US&gl=US) or [python.org](https://www.python.org/downloads/).

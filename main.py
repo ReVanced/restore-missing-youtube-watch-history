@@ -75,6 +75,20 @@ def main():
         help="Browser to use for cookies.",
     )
 
+    parser.add_argument(
+        "--cookiefile",
+        type=str,
+        default=None,
+        help="Path of netscaped cookie file.",
+    )
+
+    parser.add_argument(
+        "--removeshorts",
+        type=bool,
+        default=False,
+        help="To remove shorts from history.",
+    )
+
     args = parser.parse_args()
 
     # Use the arguments as Path objects
@@ -84,6 +98,8 @@ def main():
     SLEEP_MIN = args.sleep_min
     SLEEP_MAX = args.sleep_max
     COOKIES_FROM_BROWSER = args.cookiesfrombrowser
+    COOKIE_FILE = args.cookiefile
+    REMOVE_SHORTS = args.removeshorts
 
     # Create 'done' directory if not exists
     DONE_DIRECTORY.mkdir(parents=True, exist_ok=True)
@@ -91,6 +107,15 @@ def main():
     # Load watch history data
     with WATCH_HISTORY_FILE.open(encoding="utf8") as f:
         data = json.load(f)
+
+    if REMOVE_SHORTS is True:
+        popped = 0
+        for index in reversed(range(len(data))):
+            if data[index]["title"].lower().find("short") > 0:
+                data.pop(index)
+                print(f"popped {data[index]['title']}")
+                popped += 1
+        print(f"total popped {popped}")
 
     # Filter and keep relevant video events
     kept: list[dict[str, Any]] = filter_video_events(data, RESUME_TIMESTAMP)
@@ -107,7 +132,7 @@ def main():
 
     # Download videos
     download_videos(kept, DONE_DIRECTORY, SLEEP_MIN,
-                    SLEEP_MAX, COOKIES_FROM_BROWSER)
+                    SLEEP_MAX, COOKIES_FROM_BROWSER, COOKIE_FILE)
 
 
 def filter_video_events(
@@ -158,6 +183,7 @@ def download_videos(
     SLEEP_MIN: float,
     SLEEP_MAX: float,
     COOKIES_FROM_BROWSER: str,
+    COOKIE_FILE: str,
 ):
     """
     Download videos from the provided list of events.
@@ -170,8 +196,14 @@ def download_videos(
         "simulate": True,
         "quiet": True,
         "cookiesfrombrowser": (COOKIES_FROM_BROWSER,),
+        "cookiefile": COOKIE_FILE,
         "format": "worstaudio"
     }
+
+    if COOKIE_FILE != None:
+        opts.pop("cookiesfrombrowser")
+    else:
+        opts.pop("cookiefile")
 
     with yt_dlp.YoutubeDL(opts) as ydl:
         for i, event in enumerate(events):

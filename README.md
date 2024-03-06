@@ -73,6 +73,8 @@ Script to import missing YouTube watch history
 
 ## ✅ Usage
 
+To learn how to use the script and restore your history, follow the steps for your OS:
+
 <details>
   <summary>Windows</summary>
   

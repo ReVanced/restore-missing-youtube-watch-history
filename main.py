@@ -66,14 +66,23 @@ def main():
         default=2,
         help="Maximum sleep duration in seconds.",
     )
+    group = parser.add_mutually_exclusive_group()
 
-    parser.add_argument(
+    group.add_argument(
         "--cookiesfrombrowser",
         type=str,
         default="chrome",
         choices=VALID_BROWSERS,
         help="Browser to use for cookies.",
     )
+
+    group.add_argument(
+        "--cookiefile",
+        type=str,
+        default=None,
+        help="Path of netscaped cookie file.",
+    )
+
 
     args = parser.parse_args()
 
@@ -84,6 +93,7 @@ def main():
     SLEEP_MIN = args.sleep_min
     SLEEP_MAX = args.sleep_max
     COOKIES_FROM_BROWSER = args.cookiesfrombrowser
+    COOKIE_FILE = args.cookiefile
 
     # Create 'done' directory if not exists
     DONE_DIRECTORY.mkdir(parents=True, exist_ok=True)
@@ -107,7 +117,7 @@ def main():
 
     # Download videos
     download_videos(kept, DONE_DIRECTORY, SLEEP_MIN,
-                    SLEEP_MAX, COOKIES_FROM_BROWSER)
+                    SLEEP_MAX, COOKIES_FROM_BROWSER, COOKIE_FILE)
 
 
 def filter_video_events(
@@ -158,6 +168,7 @@ def download_videos(
     SLEEP_MIN: float,
     SLEEP_MAX: float,
     COOKIES_FROM_BROWSER: str,
+    COOKIE_FILE: str,
 ):
     """
     Download videos from the provided list of events.
@@ -170,8 +181,14 @@ def download_videos(
         "simulate": True,
         "quiet": True,
         "cookiesfrombrowser": (COOKIES_FROM_BROWSER,),
-        "format": "worstaudio"
+        "cookiefile": COOKIE_FILE,
+        "format": "worstaudio",
     }
+
+    if COOKIE_FILE != None:
+        opts.pop("cookiesfrombrowser")
+    else:
+        opts.pop("cookiefile")
 
     with yt_dlp.YoutubeDL(opts) as ydl:
         for i, event in enumerate(events):

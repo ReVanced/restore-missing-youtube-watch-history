@@ -81,13 +81,16 @@ Script to import missing YouTube watch history
 
    ![image](https://github.com/ReVanced/restore-missing-youtube-watch-history/assets/13122796/951762e7-cf85-4463-8eec-2a2dc29dfdbd)
 
-1. Open CMD, navigate to the directory where `main.py` is located, and install the required packages.
+1. Open CMD in the directory where `main.py` is located
+
+   ![image](https://github.com/ReVanced/restore-missing-youtube-watch-history/assets/13122796/bfaf6f2d-d202-49d5-9618-dea217d11056)
+
+1. install the required packages.
 
    ```bash
    pip install -r requirements.txt
    ```
 
-   ![image](https://github.com/ReVanced/restore-missing-youtube-watch-history/assets/13122796/33c352ce-534c-41ca-9c38-6ac85fc212d3)
    ![image](https://github.com/ReVanced/restore-missing-youtube-watch-history/assets/13122796/2800303f-a615-40b5-8b77-e9ad12e884dd)
 
 1. Go to [Google Takeout](https://takeout.google.com/settings/takeout).

@@ -182,7 +182,7 @@ def download_videos(
         "quiet": True,
         "cookiesfrombrowser": (COOKIES_FROM_BROWSER,),
         "cookiefile": COOKIE_FILE,
-        "format": "worstaudio"
+        "format": "worstaudio",
     }
 
     if COOKIE_FILE != None:

@@ -58,11 +58,11 @@
    Continuing the legacy of Vanced
 </p>
 
-# Restore missing YouTube watch history
+# ⌛ Restore missing YouTube watch history
 
-⌛ Script to import missing YouTube watch history
+Script to import missing YouTube watch history
 
-## Disclaimer
+## ⚠️ Disclaimer
 
 > [!WARNING]
 > If you need help, you can visit our links at [revanced.app](https://revanced.app) or join our [Discord](https://revanced.app/discord).
@@ -71,8 +71,11 @@
 > [!WARNING]
 > This script automates your YouTube account, which is not in terms of YouTube's service. Use this script with caution.
 
-## Usage
+## ✅ Usage
 
+<details>
+  <summary>Windows</summary>
+  
 1. Install the latest Python from [Microsoft Store](https://apps.microsoft.com/detail/9pjpw5ldxlz5?hl=en-US&gl=US) or [python.org](https://www.python.org/downloads/).
 1. Download the project and extract the ZIP somewhere
 
@@ -110,7 +113,7 @@
 
    ![image](https://github.com/ReVanced/restore-missing-youtube-watch-history/assets/13122796/3dc1e728-e92f-48f6-90b2-965d0415c968)
 
-After that, you will receive an email with a link to download your history. Download it. In the downloaded zip file, you will find a file called `watch-history.json` inside "YouTube and YouTube Music/history".
+After that, you will receive an email with a link to download your history. Download it. You will find a file called `watch-history.json` in the downloaded zip file inside "YouTube and YouTube Music/history".
 Place `watch-history.json` in the same directory as `main.py`.
 
 ![image](https://github.com/ReVanced/restore-missing-youtube-watch-history/assets/13122796/df826e92-9968-4dd7-82fc-485c8841b6ad)
@@ -121,12 +124,18 @@ Make sure you are logged into YouTube in your browser. By default, the script wi
 
 Run the script:
 
+> [!WARNING]  
+> Make sure your browser does not run. Neither in the foreground nor in the background (See Task Manager),
+> otherwise, you may get a permission error when running the script.
+
 ```bash
 python main.py
 ```
 
 > [!NOTE]  
 > You can use the `--help` option to see all available options.
+
+</details>
 
 Credits to @guillaumematheron for [the original script](https://gist.github.com/guillaumematheron/89f52ffd274ff3ac99f6dc0249bcc331).
 

@@ -127,7 +127,7 @@ Make sure you are logged into YouTube in your browser. By default, the script wi
 
 Run the script:
 
-> [!WARNING]  
+> ⚠️ Warning  
 > Make sure your browser does not run. Neither in the foreground nor in the background (See Task Manager),
 > otherwise, you may get a permission error when running the script.
 
@@ -135,7 +135,7 @@ Run the script:
 python main.py
 ```
 
-> [!NOTE]  
+> ℹ️ Note  
 > You can use the `--help` option to see all available options.
 
 </details>

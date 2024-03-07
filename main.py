@@ -66,13 +66,6 @@ def main():
         default=2,
         help="Maximum sleep duration in seconds.",
     )
-    parser.add_argument(
-        "--removeshorts",
-        type=bool,
-        default=False,
-        help="To remove shorts from history.",
-    )
-
     group = parser.add_mutually_exclusive_group()
 
     group.add_argument(
@@ -90,6 +83,7 @@ def main():
         help="Path of netscaped cookie file.",
     )
 
+
     args = parser.parse_args()
 
     # Use the arguments as Path objects
@@ -100,7 +94,6 @@ def main():
     SLEEP_MAX = args.sleep_max
     COOKIES_FROM_BROWSER = args.cookiesfrombrowser
     COOKIE_FILE = args.cookiefile
-    REMOVE_SHORTS = args.removeshorts
 
     # Create 'done' directory if not exists
     DONE_DIRECTORY.mkdir(parents=True, exist_ok=True)
@@ -108,15 +101,6 @@ def main():
     # Load watch history data
     with WATCH_HISTORY_FILE.open(encoding="utf8") as f:
         data = json.load(f)
-
-    if REMOVE_SHORTS is True:
-        removed = 0
-        for index in reversed(range(len(data))):
-            if data[index]["title"].lower().find("#short") > 0:
-                data.pop(index)
-                print(f"Removed: {data[index]['title']}")
-                removed += 1
-        print(f"Total shorts removed {removed}")
 
     # Filter and keep relevant video events
     kept: list[dict[str, Any]] = filter_video_events(data, RESUME_TIMESTAMP)

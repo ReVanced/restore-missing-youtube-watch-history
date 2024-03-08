@@ -99,6 +99,8 @@ async def main():
     # Load watch history data
     with WATCH_HISTORY_FILE.open(encoding="utf8") as f:
         data = json.load(f)
+        # Remove shorts to avoid the error 400
+        data = list(filter(is_not_short, data))
 
     # Filter and keep relevant video events
     kept: list[dict[str, Any]] = await filter_video_events(data, RESUME_TIMESTAMP)
@@ -149,6 +151,19 @@ async def main():
             _: list[Any] = await asyncio.gather(*tasks)
 
     logger.info("All videos have been marked as watched.")
+
+
+def is_not_short(item) -> bool:
+    """
+    Checks if the given item is not a short video.
+
+    Args:
+        item (dict): The item to check.
+
+    Returns:
+        bool: True if the item is not a short video, False otherwise.
+    """
+    return item["title"].lower().find("#short") == -1
 
 
 async def filter_video_events(

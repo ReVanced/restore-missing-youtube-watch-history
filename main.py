@@ -1,3 +1,4 @@
+import sys
 import json
 import random
 import yt_dlp
@@ -21,7 +22,21 @@ VALID_BROWSERS = (
     "vivaldi",
 )
 
+# Set up logging
+log_formatter = logging.Formatter(
+    fmt="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+)
+
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(log_formatter)
+
+file_handler = logging.FileHandler("execution.log")
+file_handler.setFormatter(log_formatter)
+
 logger: logging.Logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
 
 
 async def main():
@@ -103,14 +118,14 @@ async def main():
         data = list(filter(is_not_short, data))
 
     # Filter and keep relevant video events
-    kept: list[dict[str, Any]] = await filter_video_events(data, RESUME_TIMESTAMP)
-
-    logger.info(f"Found {len(kept)} videos to watch")
+    kept: list[dict[str, Any]] = [
+        event async for event in filter_video_events(data, RESUME_TIMESTAMP)
+    ]
 
     # Deduplicate video events based on URL
-    kept = await deduplicate_videos(kept)
+    kept = [unique async for unique in deduplicate_videos(kept)][0]
 
-    logger.info(f"Found {len(kept)} videos to watch after de-duplication")
+    logger.info(f"Found {len(kept)} videos to mark as watched.")
 
     # Sort videos based on timestamp
     kept.sort(key=lambda x: x["time"])
@@ -135,19 +150,29 @@ async def main():
 
     logger.info(f"Marking {len(urls)} videos as watched. Please wait...")
 
+    tasks = []
+    queue = asyncio.Queue()
+
+    for url in urls:
+        await queue.put(url)
+
     with yt_dlp.YoutubeDL(opts) as ydl:
         with ThreadPoolExecutor() as _:
             loop = asyncio.get_running_loop()
-            tasks = map(
-                lambda url: worker(
-                    url=url,
-                    semaphore=semaphore,
-                    max_retries=MAX_RETRIES,
-                    ytdlp_downloader=ydl.download,
-                    loop=loop,
-                ),
-                urls,
-            )
+
+            for _ in range(CONCURRENCY):
+                task = asyncio.create_task(
+                    worker_task(
+                        semaphore,
+                        queue,
+                        MAX_RETRIES,
+                        ydl.download,
+                        loop,
+                    )
+                )
+
+                tasks.append(task)
+
             _: list[Any] = await asyncio.gather(*tasks)
 
     logger.info("All videos have been marked as watched.")
@@ -195,7 +220,7 @@ async def filter_video_events(
             case _:
                 return False
 
-    valid_events = list(filter(is_valid_event, data))
+    valid_events = filter(is_valid_event, data)
 
     yield valid_events
 
@@ -213,9 +238,26 @@ async def deduplicate_videos(
         AsyncGenerator[list[dict[str, Any]], None]: An asynchronous generator that yields a list of deduplicated video events.
 
     """
-    unique_events = {event["titleUrl"]: event for event in events}.values()
+    unique_events = list({event["titleUrl"]: event for event in events[0]}.values())
 
-    yield list(unique_events)
+    yield unique_events
+
+
+async def worker_task(semaphore, queue, max_retries, ytdlp_downloader, loop):
+    """
+    A task that processes URLs from a queue and calls the worker function to perform the actual work.
+
+    Args:
+        semaphore (asyncio.Semaphore): A semaphore used to limit the number of concurrent workers.
+        queue (asyncio.Queue): A queue containing the URLs to be processed.
+        max_retries (int): The maximum number of retries for each URL.
+        ytdlp_downloader (YtdlpDownloader): An instance of the YtdlpDownloader class.
+        loop (asyncio.AbstractEventLoop): The event loop to run the task on.
+    """
+    while not queue.empty():
+        url = await queue.get()
+        await worker(url, semaphore, max_retries, ytdlp_downloader, loop)
+        queue.task_done()
 
 
 async def worker(
@@ -240,8 +282,12 @@ async def worker(
 
     """
     async with semaphore:
-        async with aiofiles.open("execution_history.log", "r+") as f:
+        async with aiofiles.open("history.log", "a+") as f:
+
+            await f.seek(0)
             processed: list[str] = [line.rstrip() for line in await f.readlines()]
+
+            logger.info(f"Processing URL: {url}")
 
             if url in processed:
                 logger.info(f"URL {url} has already been processed. Skipping...")
@@ -262,7 +308,7 @@ async def worker(
                         break
 
             await asyncio.sleep(random.uniform(1, 3))
-
+            logger.info(f"Processed URL: {url}.")
             return result
 
 

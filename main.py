@@ -3,6 +3,7 @@ import random
 import yt_dlp
 import asyncio
 import logging
+import aiofiles
 import argparse
 from pathlib import Path
 from typing import Any, AsyncGenerator
@@ -137,10 +138,10 @@ async def main():
             loop = asyncio.get_running_loop()
             tasks = map(
                 lambda url: worker(
-                    string=url,
+                    url=url,
                     semaphore=semaphore,
                     max_retries=MAX_RETRIES,
-                    work_function=ydl.download,
+                    ytdlp_downloader=ydl.download,
                     loop=loop,
                 ),
                 urls,
@@ -203,20 +204,20 @@ async def deduplicate_videos(
 
 
 async def worker(
-    string: str,
+    url: str,
     semaphore: asyncio.Semaphore,
     max_retries: int,
-    work_function: callable,
+    ytdlp_downloader: callable,
     loop: asyncio.AbstractEventLoop,
 ) -> Any:
     """
     Executes a work function asynchronously with a semaphore.
 
     Args:
-        string (str): The input string for the work function.
+        url (str): The URL to be processed.
         semaphore (asyncio.Semaphore): The semaphore to limit the number of concurrent workers.
         max_retries (int): The maximum number of retries for the work function.
-        work_function (callable): The function to be executed asynchronously.
+        ytdlp_downloader (callable): a callable ref to the yt_dlp.YoutubeDL.download() method.
         loop (asyncio.AbstractEventLoop): The event loop to run the work function.
 
     Returns:
@@ -224,20 +225,30 @@ async def worker(
 
     """
     async with semaphore:
-        for attempt in range(max_retries):
-            try:
-                result: Any = await loop.run_in_executor(
-                    None, lambda: work_function(string)
-                )
-                break
-            except Exception as e:
-                logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
-                if attempt == max_retries - 1:
-                    logger.error(f"Failed after {max_retries} attempts.")
-                    result = None
+        async with open("execution_history.log", "r+") as f:
+            processed: list[str] = [line.rstrip() for line in await f.readlines()]
+
+            if url in processed:
+                logger.info(f"URL {url} has already been processed. Skipping...")
+                return
+
+            for attempt in range(max_retries):
+                try:
+                    result: Any = await loop.run_in_executor(
+                        None, lambda: ytdlp_downloader(url)
+                    )
                     break
-        await asyncio.sleep(random.uniform(1, 5))
-        return result
+                except Exception as e:
+                    logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
+                    if attempt == max_retries - 1:
+                        logger.error(f"Failed after {max_retries} attempts.")
+                        result = None
+                        break
+
+            await f.write(url + "\n")
+            await asyncio.sleep(random.uniform(1, 3))
+
+            return result
 
 
 if __name__ == "__main__":

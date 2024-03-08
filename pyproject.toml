@@ -9,6 +9,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.10"
 yt-dlp = "^2023.12.30"
+aiofiles = "^23.2.1"
 
 
 [build-system]

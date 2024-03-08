@@ -240,7 +240,7 @@ async def worker(
 
     """
     async with semaphore:
-        async with open("execution_history.log", "r+") as f:
+        async with aiofiles.open("execution_history.log", "r+") as f:
             processed: list[str] = [line.rstrip() for line in await f.readlines()]
 
             if url in processed:
@@ -252,6 +252,7 @@ async def worker(
                     result: Any = await loop.run_in_executor(
                         None, lambda: ytdlp_downloader(url)
                     )
+                    await f.write(url + "\n")
                     break
                 except Exception as e:
                     logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
@@ -260,7 +261,6 @@ async def worker(
                         result = None
                         break
 
-            await f.write(url + "\n")
             await asyncio.sleep(random.uniform(1, 3))
 
             return result

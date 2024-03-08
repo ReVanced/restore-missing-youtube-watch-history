@@ -240,7 +240,7 @@ async def worker(
 
     """
     async with semaphore:
-        async with open("execution_history.log", "r+") as f:
+        async with aiofiles.open("execution_history.log", "r+") as f:
             processed: list[str] = [line.rstrip() for line in await f.readlines()]
 
             if url in processed:

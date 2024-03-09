@@ -149,10 +149,15 @@ async def main():
 
     urls = [video["titleUrl"] for video in kept if "titleUrl" in video]
 
-    async with aiofiles.open("history.log", "r") as f:
-        await f.seek(0)
-        processed: list[str] = [line.rstrip() for line in await f.readlines()]
-        urls = list(set(urls) - set(processed))
+    async with aiofiles.open("history.log", "a+") as h_file:
+        await h_file.seek(0)
+        processed: list[str] = [line.rstrip() for line in await h_file.readlines()]
+
+    async with aiofiles.open("failed.log", "a+") as f_file:
+        await f_file.seek(0)
+        failed: list[str] = [line.rstrip() for line in await f_file.readlines()]
+
+        urls = list(set(urls) - (set(processed + failed)))
         logger.info(f"{len(processed)} URL has already been processed. Skipping...")
 
     logger.info(f"Marking {len(urls)} videos as watched. Please wait...")
@@ -304,9 +309,12 @@ async def worker(
                 except Exception as e:
                     logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
                     if attempt == max_retries - 1:
-                        logger.error(f"Failed after {max_retries} attempts.")
-                        result = None
-                        break
+                        async with aiofiles.open("failed.log", "a+") as f_file:
+                            await f_file.seek(0)
+                            await f_file.write(url + "\n")
+                            logger.error(f"Failed after {max_retries} attempts.")
+                            result = None
+                            break
         counter += 1
         await asyncio.sleep(random.uniform(1, 3))
         logger.info(f"{counter} URL Processed: {url}.")

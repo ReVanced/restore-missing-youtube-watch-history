@@ -38,6 +38,7 @@ logger.setLevel(logging.INFO)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
+counter = 0
 
 async def main():
     """
@@ -148,6 +149,12 @@ async def main():
 
     urls = [video["titleUrl"] for video in kept if "titleUrl" in video]
 
+    async with aiofiles.open("history.log", "a+") as f:
+        await f.seek(0)
+        processed: list[str] = [line.rstrip() for line in await f.readlines()]
+        urls = list(set(urls) - set(processed))
+        logger.info(f"{len(processed)} URL has already been processed. Skipping...")
+
     logger.info(f"Marking {len(urls)} videos as watched. Please wait...")
 
     tasks = []
@@ -188,7 +195,7 @@ def is_not_short(item) -> bool:
     Returns:
         bool: True if the item is not a short video, False otherwise.
     """
-    return item["title"].lower().find("#short") == -1
+    return item["title"].lower().find("short") == -1
 
 
 async def filter_video_events(
@@ -282,34 +289,25 @@ async def worker(
 
     """
     async with semaphore:
-        async with aiofiles.open("history.log", "a+") as f:
+        global counter
 
-            await f.seek(0)
-            processed: list[str] = [line.rstrip() for line in await f.readlines()]
-
-            logger.info(f"Processing URL: {url}")
-
-            if url in processed:
-                logger.info(f"URL {url} has already been processed. Skipping...")
-                return
-
-            for attempt in range(max_retries):
-                try:
-                    result: Any = await loop.run_in_executor(
-                        None, lambda: ytdlp_downloader(url)
-                    )
-                    await f.write(url + "\n")
+        for attempt in range(max_retries):
+            try:
+                result: Any = await loop.run_in_executor(
+                    None, lambda: ytdlp_downloader(url)
+                )
+                await f.write(url + "\n")
+                break
+            except Exception as e:
+                logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
+                if attempt == max_retries - 1:
+                    logger.error(f"Failed after {max_retries} attempts.")
+                    result = None
                     break
-                except Exception as e:
-                    logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
-                    if attempt == max_retries - 1:
-                        logger.error(f"Failed after {max_retries} attempts.")
-                        result = None
-                        break
-
-            await asyncio.sleep(random.uniform(1, 3))
-            logger.info(f"Processed URL: {url}.")
-            return result
+        counter += 1
+        await asyncio.sleep(random.uniform(1, 3))
+        logger.info(f"{counter} URL Processed: {url}.")
+        return result
 
 
 if __name__ == "__main__":

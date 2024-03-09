@@ -156,7 +156,7 @@ async def main():
         await f_file.seek(0)
         failed: list[str] = [line.rstrip() for line in await f_file.readlines()]
 
-        urls = list(set(urls) - (set(processed + failed)))
+        urls = list(set(urls) - set(processed + failed))
         logger.info(f"{len(processed)} URL has already been processed. Skipping...")
 
     logger.info(f"Marking {len(urls)} videos as watched. Please wait...")
@@ -186,8 +186,6 @@ async def main():
                 # print(f"total task {len(tasks)}")
 
             _: list[Any] = await tqdm.gather(*tasks, total=len(urls), desc="Precessed: ")
-    # for i in tqdm.as_completed(tasks, total=len(tasks)):
-    #     await i
 
     logger.info("All videos have been marked as watched.")
 

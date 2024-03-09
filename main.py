@@ -9,7 +9,8 @@ import argparse
 from pathlib import Path
 from typing import Any, AsyncGenerator
 from concurrent.futures import ThreadPoolExecutor
-
+from tqdm.asyncio import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 VALID_BROWSERS = (
     "brave",
@@ -37,8 +38,6 @@ logger: logging.Logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
-
-counter = 0
 
 async def main():
     """
@@ -184,8 +183,11 @@ async def main():
                 )
 
                 tasks.append(task)
+                # print(f"total task {len(tasks)}")
 
-            _: list[Any] = await asyncio.gather(*tasks)
+            _: list[Any] = await tqdm.gather(*tasks, total=len(urls), desc="Precessed: ")
+    # for i in tqdm.as_completed(tasks, total=len(tasks)):
+    #     await i
 
     logger.info("All videos have been marked as watched.")
 
@@ -268,7 +270,7 @@ async def worker_task(semaphore, queue, max_retries, ytdlp_downloader, loop):
     """
     while not queue.empty():
         url = await queue.get()
-        await worker(url, semaphore, max_retries, ytdlp_downloader, loop)
+        return await worker(url, semaphore, max_retries, ytdlp_downloader, loop)
         queue.task_done()
 
 
@@ -294,7 +296,6 @@ async def worker(
 
     """
 
-    global counter
     async with semaphore:
         async with aiofiles.open("history.log", "a+") as f:
             await f.seek(0)
@@ -315,11 +316,11 @@ async def worker(
                             logger.error(f"Failed after {max_retries} attempts.")
                             result = None
                             break
-        counter += 1
         await asyncio.sleep(random.uniform(1, 3))
-        logger.info(f"{counter} URL Processed: {url}.")
+        logger.info(f"Processed URL: {url}.")
         return result
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    with logging_redirect_tqdm():
+        asyncio.run(main())

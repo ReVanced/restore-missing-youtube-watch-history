@@ -62,6 +62,11 @@
 
 Script to import missing YouTube watch history
 
+## ❓ About
+
+This script is used to restore the missing YouTube watch history if you used the ReVanced `Client spoof` patch for YouTube.  
+Please remember that it is not meant to be a general-purpose tool for recording watch history. It has specialized functionality for ReVanced to recover from the incident when watch history has disappeared. 
+
 ## ⚠️ Disclaimer
 
 > [!WARNING]

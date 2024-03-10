@@ -149,9 +149,11 @@ async def main():
     urls = [video["titleUrl"] for video in kept if "titleUrl" in video]
 
     async with aiofiles.open("history.log", "a+") as h_file:
+        await h_file.seek(0)
         processed: list[str] = [line.rstrip() for line in await h_file.readlines()]
 
     async with aiofiles.open("failed.log", "a+") as f_file:
+        await f_file.seek(0)
         failed: list[str] = [line.rstrip() for line in await f_file.readlines()]
 
         urls = list(set(urls) - set(processed + failed))

@@ -9,7 +9,8 @@ import argparse
 from pathlib import Path
 from typing import Any, AsyncGenerator
 from concurrent.futures import ThreadPoolExecutor
-
+from tqdm.asyncio import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 VALID_BROWSERS = (
     "brave",
@@ -37,7 +38,6 @@ logger: logging.Logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
-
 
 async def main():
     """
@@ -148,6 +148,17 @@ async def main():
 
     urls = [video["titleUrl"] for video in kept if "titleUrl" in video]
 
+    async with aiofiles.open("history.log", "a+") as h_file:
+        await h_file.seek(0)
+        processed: list[str] = [line.rstrip() for line in await h_file.readlines()]
+
+    async with aiofiles.open("failed.log", "a+") as f_file:
+        await f_file.seek(0)
+        failed: list[str] = [line.rstrip() for line in await f_file.readlines()]
+
+        urls = list(set(urls) - set(processed + failed))
+        logger.info(f"{len(processed)} videos have been processed. Skipping...")
+
     logger.info(f"Marking {len(urls)} videos as watched. Please wait...")
 
     tasks = []
@@ -159,6 +170,7 @@ async def main():
     with yt_dlp.YoutubeDL(opts) as ydl:
         with ThreadPoolExecutor() as _:
             loop = asyncio.get_running_loop()
+            pbar = tqdm(total=len(urls), desc="Processed: ")
 
             for _ in range(CONCURRENCY):
                 task = asyncio.create_task(
@@ -168,12 +180,15 @@ async def main():
                         MAX_RETRIES,
                         ydl.download,
                         loop,
+                        pbar,
                     )
                 )
 
                 tasks.append(task)
+                # print(f"total task {len(tasks)}")
 
             _: list[Any] = await asyncio.gather(*tasks)
+            pbar.close()
 
     logger.info("All videos have been marked as watched.")
 
@@ -188,7 +203,7 @@ def is_not_short(item) -> bool:
     Returns:
         bool: True if the item is not a short video, False otherwise.
     """
-    return item["title"].lower().find("#short") == -1
+    return item["title"].lower().find("short") == -1
 
 
 async def filter_video_events(
@@ -243,7 +258,7 @@ async def deduplicate_videos(
     yield unique_events
 
 
-async def worker_task(semaphore, queue, max_retries, ytdlp_downloader, loop):
+async def worker_task(semaphore, queue, max_retries, ytdlp_downloader, loop, pbar):
     """
     A task that processes URLs from a queue and calls the worker function to perform the actual work.
 
@@ -256,7 +271,9 @@ async def worker_task(semaphore, queue, max_retries, ytdlp_downloader, loop):
     """
     while not queue.empty():
         url = await queue.get()
+
         await worker(url, semaphore, max_retries, ytdlp_downloader, loop)
+        pbar.update(1)
         queue.task_done()
 
 
@@ -283,15 +300,7 @@ async def worker(
     """
     async with semaphore:
         async with aiofiles.open("history.log", "a+") as f:
-
             await f.seek(0)
-            processed: list[str] = [line.rstrip() for line in await f.readlines()]
-
-            logger.info(f"Processing URL: {url}")
-
-            if url in processed:
-                logger.info(f"URL {url} has already been processed. Skipping...")
-                return
 
             for attempt in range(max_retries):
                 try:
@@ -303,14 +312,17 @@ async def worker(
                 except Exception as e:
                     logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
                     if attempt == max_retries - 1:
-                        logger.error(f"Failed after {max_retries} attempts.")
-                        result = None
-                        break
-
-            await asyncio.sleep(random.uniform(1, 3))
-            logger.info(f"Processed URL: {url}.")
-            return result
+                        async with aiofiles.open("failed.log", "a+") as f_file:
+                            await f_file.seek(0)
+                            await f_file.write(url + "\n")
+                            logger.error(f"Failed after {max_retries} attempts.")
+                            result = None
+                            break
+        await asyncio.sleep(random.uniform(1, 3))
+        logger.info(f"Processed URL: {url}.")
+        return result
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    with logging_redirect_tqdm():
+        asyncio.run(main())

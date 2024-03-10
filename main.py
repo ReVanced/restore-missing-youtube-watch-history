@@ -157,7 +157,7 @@ async def main():
         failed: list[str] = [line.rstrip() for line in await f_file.readlines()]
 
         urls = list(set(urls) - set(processed + failed))
-        logger.info(f"{len(processed)} URL has already been processed. Skipping...")
+        logger.info(f"{len(processed)} videos have been processed. Skipping...")
 
     logger.info(f"Marking {len(urls)} videos as watched. Please wait...")
 
@@ -170,7 +170,7 @@ async def main():
     with yt_dlp.YoutubeDL(opts) as ydl:
         with ThreadPoolExecutor() as _:
             loop = asyncio.get_running_loop()
-            pbar = tqdm(total=len(urls), desc="Precessed: ")
+            pbar = tqdm(total=len(urls), desc="Processed: ")
 
             for _ in range(CONCURRENCY):
                 task = asyncio.create_task(

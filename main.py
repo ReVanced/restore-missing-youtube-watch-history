@@ -170,6 +170,7 @@ async def main():
     with yt_dlp.YoutubeDL(opts) as ydl:
         with ThreadPoolExecutor() as _:
             loop = asyncio.get_running_loop()
+            pbar = tqdm(total=len(urls), desc="Precessed: ")
 
             for _ in range(CONCURRENCY):
                 task = asyncio.create_task(
@@ -179,13 +180,15 @@ async def main():
                         MAX_RETRIES,
                         ydl.download,
                         loop,
+                        pbar,
                     )
                 )
 
                 tasks.append(task)
                 # print(f"total task {len(tasks)}")
 
-            _: list[Any] = await tqdm.gather(*tasks, total=len(urls), desc="Precessed: ")
+            _: list[Any] = await asyncio.gather(*tasks)
+            pbar.close()
 
     logger.info("All videos have been marked as watched.")
 
@@ -255,7 +258,7 @@ async def deduplicate_videos(
     yield unique_events
 
 
-async def worker_task(semaphore, queue, max_retries, ytdlp_downloader, loop):
+async def worker_task(semaphore, queue, max_retries, ytdlp_downloader, loop, pbar):
     """
     A task that processes URLs from a queue and calls the worker function to perform the actual work.
 
@@ -268,7 +271,9 @@ async def worker_task(semaphore, queue, max_retries, ytdlp_downloader, loop):
     """
     while not queue.empty():
         url = await queue.get()
-        return await worker(url, semaphore, max_retries, ytdlp_downloader, loop)
+
+        await worker(url, semaphore, max_retries, ytdlp_downloader, loop)
+        pbar.update(1)
         queue.task_done()
 
 
@@ -293,7 +298,6 @@ async def worker(
         Any: The result of the work function.
 
     """
-
     async with semaphore:
         async with aiofiles.open("history.log", "a+") as f:
             await f.seek(0)

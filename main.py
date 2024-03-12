@@ -1,13 +1,15 @@
-import os
-import time
+import sys
 import json
 import random
-import hashlib
-import argparse
-from typing import Any
-from pathlib import Path
-
 import yt_dlp
+import asyncio
+import logging
+import aiofiles
+import argparse
+from pathlib import Path
+from typing import Any, AsyncGenerator
+from concurrent.futures import ThreadPoolExecutor
+
 
 VALID_BROWSERS = (
     "brave",
@@ -20,162 +22,116 @@ VALID_BROWSERS = (
     "vivaldi",
 )
 
+# Set up logging
+log_formatter = logging.Formatter(
+    fmt="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+)
 
-def main():
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(log_formatter)
+
+file_handler = logging.FileHandler("execution.log")
+file_handler.setFormatter(log_formatter)
+
+logger: logging.Logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+
+async def main():
     """
     Process and download videos from YouTube watch history.
 
     Args:
         --watch_history_file (str): Path to the watch history JSON file.
-        --done_directory (str): Directory to save downloaded videos marker.
         --resume_timestamp (str): Timestamp to resume from (ISO 8601 format).
-        --sleep_min (float): Minimum sleep duration in seconds.
-        --sleep_max (float): Maximum sleep duration in seconds.
+        --concurrency (int): Number of concurrent downloads.
+        --max_retries (int): Number of retries for each video.
+        --cookiesfrombrowser (str): The name of the browser from where cookies are loaded.
+        --cookiefile (str): File name or text stream from where cookies should be read and dumped to.
     """
 
     parser = argparse.ArgumentParser(
         description="Process and download videos from YouTube watch history."
     )
+
     parser.add_argument(
         "--watch_history_file",
         type=Path,
         default=Path("./watch-history.json"),
         help="Path to the watch history JSON file.",
     )
-    parser.add_argument(
-        "--done_directory",
-        type=Path,
-        default=Path("./done"),
-        help="Directory to save downloaded videos marker.",
-    )
+
     parser.add_argument(
         "--resume_timestamp",
         type=str,
         default="2022-08-17T11:50:00.000Z",
         help="Timestamp to resume from (ISO 8601 format).",
     )
+
     parser.add_argument(
-        "--sleep_min",
-        type=float,
-        default=1,
-        help="Minimum sleep duration in seconds.",
+        "--concurrency",
+        type=int,
+        default=5,
+        help="Number of concurrent downloads.",
     )
+
     parser.add_argument(
-        "--sleep_max",
-        type=float,
-        default=2,
-        help="Maximum sleep duration in seconds.",
+        "--max_retries",
+        type=int,
+        default=3,
+        help="Number of retries for each video.",
     )
-    group = parser.add_mutually_exclusive_group()
+
+    group: argparse._MutuallyExclusiveGroup = parser.add_mutually_exclusive_group()
 
     group.add_argument(
         "--cookiesfrombrowser",
         type=str,
         default="chrome",
         choices=VALID_BROWSERS,
-        help="Browser to use for cookies.",
+        help="The name of the browser from where cookies are loaded",
     )
 
     group.add_argument(
         "--cookiefile",
-        type=str,
+        type=Path,
         default=None,
-        help="Path of netscaped cookie file.",
+        help="File name or text stream from where cookies should be read and dumped to.",
     )
-
 
     args = parser.parse_args()
 
     # Use the arguments as Path objects
-    WATCH_HISTORY_FILE = args.watch_history_file
-    DONE_DIRECTORY = args.done_directory
-    RESUME_TIMESTAMP = args.resume_timestamp
-    SLEEP_MIN = args.sleep_min
-    SLEEP_MAX = args.sleep_max
-    COOKIES_FROM_BROWSER = args.cookiesfrombrowser
-    COOKIE_FILE = args.cookiefile
-
-    # Create 'done' directory if not exists
-    DONE_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    WATCH_HISTORY_FILE: Path = args.watch_history_file
+    RESUME_TIMESTAMP: str = args.resume_timestamp
+    COOKIES_FROM_BROWSER: str = args.cookiesfrombrowser
+    COOKIE_FILE: Path = args.cookiefile
+    CONCURRENCY: float = args.concurrency
+    MAX_RETRIES: float = args.max_retries
 
     # Load watch history data
     with WATCH_HISTORY_FILE.open(encoding="utf8") as f:
         data = json.load(f)
+        # Remove shorts to avoid the error 400
+        data = list(filter(is_not_short, data))
 
     # Filter and keep relevant video events
-    kept: list[dict[str, Any]] = filter_video_events(data, RESUME_TIMESTAMP)
-
-    print(f"Found {len(kept)} videos to watch")
+    kept: list[dict[str, Any]] = [
+        event async for event in filter_video_events(data, RESUME_TIMESTAMP)
+    ]
 
     # Deduplicate video events based on URL
-    kept = deduplicate_videos(kept)
+    kept = [unique async for unique in deduplicate_videos(kept)][0]
 
-    print(f"Found {len(kept)} videos to watch after de-duplication")
+    logger.info(f"Found {len(kept)} videos to mark as watched.")
 
     # Sort videos based on timestamp
     kept.sort(key=lambda x: x["time"])
 
-    # Download videos
-    download_videos(kept, DONE_DIRECTORY, SLEEP_MIN,
-                    SLEEP_MAX, COOKIES_FROM_BROWSER, COOKIE_FILE)
+    semaphore = asyncio.Semaphore(CONCURRENCY)
 
-
-def filter_video_events(
-    data: list[dict[str, Any]], RESUME_TIMESTAMP: str
-) -> list[dict[str, Any]]:
-    """
-    Filter video events from the provided data.
-
-    Args:
-        data: A list of events.
-
-    Returns:
-        A list of filtered video events.
-    """
-    filtered_events: list[dict[str, Any]] = []
-
-    for event in data:
-        if event.get("header") != "YouTube":
-            continue
-        if "details" in event and event["details"][0]["name"] == "From Google Ads":
-            continue
-        if event["time"] < RESUME_TIMESTAMP:
-            continue
-        if "titleUrl" not in event:
-            continue
-        filtered_events.append(event)
-
-    return filtered_events
-
-
-def deduplicate_videos(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """
-    Deduplicate video events based on URL.
-
-    Args:
-        events: A list of video events.
-
-    Returns:
-        A list of deduplicated video events.
-    """
-    unique_events = {event["titleUrl"]: event for event in events}.values()
-    return list(unique_events)
-
-
-def download_videos(
-    events: list[dict[str, Any]],
-    DONE_DIRECTORY: Path,
-    SLEEP_MIN: float,
-    SLEEP_MAX: float,
-    COOKIES_FROM_BROWSER: str,
-    COOKIE_FILE: str,
-):
-    """
-    Download videos from the provided list of events.
-
-    Args:
-        events: list of video events to download.
-    """
     opts = {
         "mark_watched": True,
         "simulate": True,
@@ -185,43 +141,176 @@ def download_videos(
         "format": "worstaudio",
     }
 
-    if COOKIE_FILE != None:
+    if COOKIE_FILE:
         opts.pop("cookiesfrombrowser")
     else:
         opts.pop("cookiefile")
 
+    urls = [video["titleUrl"] for video in kept if "titleUrl" in video]
+
+    logger.info(f"Marking {len(urls)} videos as watched. Please wait...")
+
+    tasks = []
+    queue = asyncio.Queue()
+
+    for url in urls:
+        await queue.put(url)
+
     with yt_dlp.YoutubeDL(opts) as ydl:
-        for i, event in enumerate(events):
-            timestamp = event["time"]
-            url = event["titleUrl"]
-            title = event["title"][8:]
+        with ThreadPoolExecutor() as _:
+            loop = asyncio.get_running_loop()
 
-            marker_path = os.path.join(
-                DONE_DIRECTORY, hashlib.sha256(url.encode("utf-8")).hexdigest()
-            )
+            for _ in range(CONCURRENCY):
+                task = asyncio.create_task(
+                    worker_task(
+                        semaphore,
+                        queue,
+                        MAX_RETRIES,
+                        ydl.download,
+                        loop,
+                    )
+                )
 
-            print(
-                f"{i}/{len(events)} \t {timestamp} \t {url} \t {title} ... ",
-                end="",
-                flush=True,
-            )
+                tasks.append(task)
 
-            if os.path.exists(marker_path):
-                print(" -> Already done")
-                continue
+            _: list[Any] = await asyncio.gather(*tasks)
 
-            try:
-                ydl.download(url)
-                print(" -> Sleeping ... ", end="", flush=True)
-                time.sleep(SLEEP_MIN + random.random()
-                           * (SLEEP_MAX - SLEEP_MIN))
-                print(" -> Done")
-            except yt_dlp.utils.DownloadError:
-                print(" -> DownloadError")
+    logger.info("All videos have been marked as watched.")
 
-            with open(marker_path, "w"):
-                pass
+
+def is_not_short(item) -> bool:
+    """
+    Checks if the given item is not a short video.
+
+    Args:
+        item (dict): The item to check.
+
+    Returns:
+        bool: True if the item is not a short video, False otherwise.
+    """
+    return item["title"].lower().find("#short") == -1
+
+
+async def filter_video_events(
+    data: list[dict[str, Any]], RESUME_TIMESTAMP: str
+) -> AsyncGenerator[list[dict[str, Any]], None]:
+    """
+    Filters video events based on certain conditions.
+
+    Args:
+        data (list[dict[str, Any]]): The list of video events to filter.
+        RESUME_TIMESTAMP (str): The timestamp to compare against.
+
+    Yields:
+        AsyncGenerator[list[dict[str, Any]], None]: A generator that yields the filtered video events.
+
+    """
+
+    def is_valid_event(event: dict[str, Any]) -> bool:
+        match event:
+            case {
+                "header": header,
+                "time": time,
+            } if header != "YouTube" or time < RESUME_TIMESTAMP:
+                return False
+            case {"details": [{"name": "From Google Ads"}]}:
+                return False
+            case {"titleUrl": _}:
+                return True
+            case _:
+                return False
+
+    valid_events = filter(is_valid_event, data)
+
+    yield valid_events
+
+
+async def deduplicate_videos(
+    events: list[dict[str, Any]]
+) -> AsyncGenerator[list[dict[str, Any]], None]:
+    """
+    Deduplicates a list of video events based on their title URL.
+
+    Args:
+        events (list[dict[str, Any]]): A list of video events, where each event is a dictionary.
+
+    Yields:
+        AsyncGenerator[list[dict[str, Any]], None]: An asynchronous generator that yields a list of deduplicated video events.
+
+    """
+    unique_events = list({event["titleUrl"]: event for event in events[0]}.values())
+
+    yield unique_events
+
+
+async def worker_task(semaphore, queue, max_retries, ytdlp_downloader, loop):
+    """
+    A task that processes URLs from a queue and calls the worker function to perform the actual work.
+
+    Args:
+        semaphore (asyncio.Semaphore): A semaphore used to limit the number of concurrent workers.
+        queue (asyncio.Queue): A queue containing the URLs to be processed.
+        max_retries (int): The maximum number of retries for each URL.
+        ytdlp_downloader (YtdlpDownloader): An instance of the YtdlpDownloader class.
+        loop (asyncio.AbstractEventLoop): The event loop to run the task on.
+    """
+    while not queue.empty():
+        url = await queue.get()
+        await worker(url, semaphore, max_retries, ytdlp_downloader, loop)
+        queue.task_done()
+
+
+async def worker(
+    url: str,
+    semaphore: asyncio.Semaphore,
+    max_retries: int,
+    ytdlp_downloader: callable,
+    loop: asyncio.AbstractEventLoop,
+) -> Any:
+    """
+    Executes a work function asynchronously with a semaphore.
+
+    Args:
+        url (str): The URL to be processed.
+        semaphore (asyncio.Semaphore): The semaphore to limit the number of concurrent workers.
+        max_retries (int): The maximum number of retries for the work function.
+        ytdlp_downloader (callable): a callable ref to the yt_dlp.YoutubeDL.download() method.
+        loop (asyncio.AbstractEventLoop): The event loop to run the work function.
+
+    Returns:
+        Any: The result of the work function.
+
+    """
+    async with semaphore:
+        async with aiofiles.open("history.log", "a+") as f:
+
+            await f.seek(0)
+            processed: list[str] = [line.rstrip() for line in await f.readlines()]
+
+            logger.info(f"Processing URL: {url}")
+
+            if url in processed:
+                logger.info(f"URL {url} has already been processed. Skipping...")
+                return
+
+            for attempt in range(max_retries):
+                try:
+                    result: Any = await loop.run_in_executor(
+                        None, lambda: ytdlp_downloader(url)
+                    )
+                    await f.write(url + "\n")
+                    break
+                except Exception as e:
+                    logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying...")
+                    if attempt == max_retries - 1:
+                        logger.error(f"Failed after {max_retries} attempts.")
+                        result = None
+                        break
+
+            await asyncio.sleep(random.uniform(1, 3))
+            logger.info(f"Processed URL: {url}.")
+            return result
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

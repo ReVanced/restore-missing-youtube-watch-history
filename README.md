@@ -92,10 +92,11 @@ To learn how to use the script and restore your history, follow the steps for yo
 
    ![image](https://github.com/ReVanced/restore-missing-youtube-watch-history/assets/13122796/bfaf6f2d-d202-49d5-9618-dea217d11056)
 
-1. install the required packages
+1. install the required packages and update yt-dlp
 
    ```bash
-   pip install -r requirements.txt
+   python -m pip install -r requirements.txt
+   python -m pip install --upgrade yt-dlp
    ```
 
    ![image](https://github.com/ReVanced/restore-missing-youtube-watch-history/assets/13122796/2800303f-a615-40b5-8b77-e9ad12e884dd)
